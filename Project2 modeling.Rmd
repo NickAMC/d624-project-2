@@ -1,0 +1,363 @@
+---
+title: "Predictive modeling"
+date: "`r Sys.Date()`"
+output:
+  rmdformats::readthedown:
+    highlight: kate
+---
+
+```{r setup, include=FALSE}
+## Global options
+knitr::opts_chunk$set(cache = TRUE)
+```
+
+```{r warning=FALSE, message=FALSE}
+library(glmnet)
+library(tidyverse)
+library(caret)
+library(dplyr)
+library(mice)
+library(kernlab)
+library(earth)
+library(nnet)
+library(neuralnet)
+library(Cubist)
+library(gbm)
+library(ipred)
+library(party)
+library(partykit)
+library(randomForest)
+library(rpart)
+#library(RWeka)
+```
+
+## Preprocessing:
+
+```{r warning=FALSE, message=FALSE}
+df <- read_csv("https://raw.githubusercontent.com/Umerfarooq122/Using-Predictive-analytics-to-predict-PH-of-beverages/main/StudentData%20-%20Copy.csv")
+```
+
+```{r}
+str(df)
+```
+
+```{r}
+df$`Brand Code` <- as.factor(df$`Brand Code`)
+#df_eval$Brand.Code <- as.factor(df_Eval$Brand.Code)
+```
+
+```{r}
+df %>%
+  summarise_all(list(~ sum(is.na(.)))) %>%
+  gather(variable, value) %>%
+  filter(value != 0) %>%
+  arrange(-value) 
+```
+
+```{r}
+colnames(df)
+```
+
+```{r}
+names<- c("Brand_Code", "Carb_Volume", "Fill_Ounces","PC_Volume", "Carb_Pressure",     "Carb_Temp",         "PSC" ,              "PSC_Fill" ,        
+ "PSC_CO2"   ,        "Mnf_Flow"     ,     "Carb_Pressure1"   , "Fill_Pressure" ,   
+ "Hyd_Pressure1"  ,   "Hyd_Pressure2" ,    "Hyd_Pressure3"  ,   "Hyd_Pressure4"  ,  
+ "Filler_Level" ,     "Filler_Speed"  ,    "Temperature"  ,     "Usage_cont" ,      
+ "Carb_Flow"  ,       "Density"   ,        "MFR"   ,            "Balling"   ,       
+"Pressure_Vacuum" ,  "PH" ,               "Oxygen_Filler"   ,  "Bowl_Setpoint"  ,  
+ "Pressure_Setpoint", "Air_Pressurer" ,    "Alch_Rel"  ,        "Carb_Rel"   ,      
+ "Balling_Lvl"      )
+```
+
+```{r}
+colnames(df) <- names
+```
+
+```{r}
+set.seed(100)
+
+df <- mice(df, m = 1, method = 'pmm', print = FALSE) %>% complete()
+
+# filtering low frequencies
+df <- df[, -nearZeroVar(df)]
+```
+
+```{r}
+index <- createDataPartition(df$PH, p = .75, list = FALSE)
+
+# train 
+train_x <- df[index, ] |> select(-PH)
+train_y <- df[index, 'PH']
+
+# test
+test_x <- df[-index, ] |> select(-PH)
+test_y <- df[-index, 'PH']
+```
+
+
+
+
+## Robust Linear Regression
+
+```{r}
+ctrl <- trainControl(method = "cv", number = 10)
+rlmPCA <- train(train_x, train_y, method = "rlm", preProcess = c("center","scale"), trControl = ctrl)
+```
+
+
+```{r}
+rlmpred <- predict(rlmPCA, test_x)
+```
+
+```{r}
+postResample(rlmpred, test_y)
+```
+
+## Linear Regression
+
+```{r}
+lmtuned <- train(train_x,train_y,  method = 'lm', preProcess = c("center","scale"), trControl = ctrl)
+```
+
+```{r}
+lmpred <- predict(lmtuned, test_x)
+postResample(lmpred,test_y)
+```
+
+
+## **Boosted Trees:**
+
+```{r}
+gbmGrid <- expand.grid(interaction.depth = seq(1, 7, by = 2),
+                       n.trees = seq(100, 1000, by = 50),
+                       shrinkage = c(0.01, 0.1),
+                       n.minobsinnode = 10)
+set.seed(100)
+
+gbmTune <- train(train_x,  train_y,
+                 method = "gbm",
+                 tuneGrid = gbmGrid,
+                 preProcess = c("center", "scale"),
+                 verbose = FALSE)
+
+gbmPred <- predict(gbmTune, test_x)
+
+postResample(gbmPred, test_y)
+```
+
+
+## **Random Forest:**
+
+
+```{r}
+set.seed(100)
+
+rfGrid1 <- expand.grid(
+  mtry = c(2, 4, 6,8,10,12,14,16,18,20)#,  
+  #ntree = c(500, 1000),  
+ # nodesize = c(1, 5)  
+)
+
+# Set up control parameters
+ctrl <- trainControl(
+  method = "cv", 
+  number = 5,  
+  verboseIter = TRUE  
+)
+
+# Train the random forest model
+set.seed(123)  
+rfTune <- train(
+  train_x,  
+  train_y,  
+  method = "rf", 
+  preProcess = c("center", "scale"),
+  tuneGrid = rfGrid1,  
+  trControl = ctrl  
+)
+
+
+rfPred <- predict(rfTune, test_x)
+
+postResample(rfPred, test_y)
+```
+
+
+
+
+
+
+
+## **Loading the Data set:**
+
+
+
+```{r warning=FALSE, message=FALSE}
+X_train <- as.data.frame(read_csv("https://raw.githubusercontent.com/NickAMC/d624-project-2/main/X_train.csv"))
+y_train <- as.data.frame(read_csv("https://raw.githubusercontent.com/NickAMC/d624-project-2/main/y_train.csv"))
+X_test <- as.data.frame(read_csv("https://raw.githubusercontent.com/NickAMC/d624-project-2/main/X_test.csv"))
+y_test <- as.data.frame(read_csv("https://raw.githubusercontent.com/NickAMC/d624-project-2/main/y_test.csv"))
+```
+
+
+
+```{r}
+training <- cbind.data.frame(X_train, y_train)
+testing <- cbind.data.frame(X_test, y_test)
+```
+
+
+## Linear Regression
+
+```{r}
+ctrl <- trainControl(method = "cv", number = 10)
+
+lmtuned <- train(PH~., data = training,  method = 'lm', trControl = ctrl)
+```
+
+```{r}
+lmtuned
+```
+
+## Partial least Squares:
+
+```{r}
+plsTune <- train(PH~., data = training,
+ method = "pls", tuneLength = 100, trControl = ctrl)#, preProc = c("center", "scale"))
+```
+
+```{r}
+plsTune
+```
+
+## **Elastic Net Regression:**
+
+```{r}
+enetGrid <- expand.grid(.lambda = c(0, 0.01, .1),.fraction = seq(.05, 1, length = 20))
+enetRegFit <- train(PH~., data = training, method = "enet", tuneGrid = enetGrid, trControl = ctrl,
+)
+```
+
+```{r}
+enetRegFit
+```
+
+## **Neural Network:**
+
+```{r}
+nnetGrid <- expand.grid(.decay = c(0, 0.01, .1),.size = c(1:10),.bag = FALSE)
+set.seed(100)
+nnetTune <- train(PH~., data = training ,method = "avNNet",tuneGrid = nnetGrid,trControl = ctrl,
+linout = TRUE,trace = FALSE, MaxNWts = 10 * (ncol(training) + 1) + 10 + 1, maxit = 20)
+```
+
+
+
+
+```{r}
+nnPred <- predict(nnetTune, X_test)
+```
+
+```{r}
+postResample(nnPred, as.matrix(y_test))
+```
+
+## **MARS:**
+
+```{r}
+marsGrid <- expand.grid(.degree = 1:2, .nprune = 2:38)
+
+set.seed(100)
+
+# tune
+marsTune <- train(PH~.,data = training,
+                  method = "earth",
+                  tuneGrid = marsGrid,
+                  trControl = trainControl(method = "cv"))
+
+marsPred <- predict(marsTune, X_test)
+
+postResample(marsPred, as.matrix(y_test))
+```
+
+## **Boosting:**
+
+```{r}
+gbmGrid <- expand.grid(interaction.depth = seq(1, 7, by = 2),
+                       n.trees = seq(100, 1000, by = 50),
+                       shrinkage = c(0.01, 0.1),
+                       n.minobsinnode = 10)
+set.seed(100)
+
+gbmTune <- train(PH~., data = training,
+                 method = "gbm",
+                 tuneGrid = gbmGrid,
+                 verbose = FALSE)
+
+gbmPred <- predict(gbmTune, X_test)
+
+postResample(gbmPred, as.matrix(y_test))
+```
+
+## **Cubist:**
+
+```{r}
+cubistTuned <- train(PH~., data = training, 
+                     method = "cubist")
+
+cubistPred <- predict(cubistTuned, X_test)
+
+postResample(cubistPred, as.matrix(y_test))
+```
+
+## **Random Forest:**
+
+
+```{r}
+set.seed(100)
+
+rfGrid1 <- expand.grid(
+  mtry = c(2, 4, 6)#,  
+  #ntree = c(500, 1000),  
+ # nodesize = c(1, 5)  
+)
+
+# Set up control parameters
+ctrl <- trainControl(
+  method = "cv", 
+  number = 5,  
+  verboseIter = TRUE  
+)
+
+# Train the random forest model
+set.seed(123)  
+rfTune <- train(
+  PH ~ .,  
+  data = training,  
+  method = "rf", 
+  tuneGrid = rfGrid1,  
+  trControl = ctrl  
+)
+
+
+rfPred <- predict(rfTune, X_test)
+
+postResample(rfPred, as.matrix(y_test))
+```
+
+## **Support Vector Machines:**
+
+```{r}
+set.seed(100)
+
+# tune
+svmRTune <- train(PH~., data = training,
+                  method = "svmRadial",
+                  tuneLength = 14,
+                  trControl = trainControl(method = "cv"))
+
+svmRPred <- predict(svmRTune, X_test)
+
+postResample(svmRPred, as.matrix(y_test))
+```
+

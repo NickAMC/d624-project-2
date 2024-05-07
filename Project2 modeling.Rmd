@@ -9,9 +9,6 @@ output:
 ```{r setup, include=FALSE}
 ## Global options
 knitr::opts_chunk$set(cache = TRUE)
-```
-
-```{r warning=FALSE, message=FALSE}
 library(glmnet)
 library(tidyverse)
 library(caret)
@@ -28,23 +25,84 @@ library(party)
 library(partykit)
 library(randomForest)
 library(rpart)
-#library(RWeka)
 ```
 
-## Preprocessing:
+
+
+# Intrduction:
+
+As a data scientist tasked with developing a predictive model for pH regulation in manufacturing processes, the overarching objective is to leverage data-driven insights to enhance operational efficiency, ensure regulatory compliance, and optimize product quality. By harnessing advanced analytics and machine learning techniques, we aim to empower decision-makers with actionable insights that enable proactive management of pH fluctuations throughout the production cycle.
+
+# Goal:
+
+The goal of this project is to identify relevant features and engineer variables that capture the predictive factors influencing pH variations. Utilize statistical methods and domain expertise to select the most informative features for model development. We will also try to develop and train predictive models using appropriate algorithms such as regression, time series analysis, or machine learning classifiers. Employ rigorous evaluation techniques, including cross-validation and performance metrics, to assess model accuracy and generalization ability. Our goal is also to ensure transparency and interpret-ability of the predictive model by employing techniques such as feature importance analysis, model visualization, and explanation methods to elucidate the factors driving pH predictions. We will also suggest how to integrate the predictive model with existing decision support systems or manufacturing control systems to enable automated decision-making based on pH forecasts. Facilitate seamless communication between the data science team and operational stakeholders.
+
+By pursuing these goals, we aim to establish a robust data science framework for pH predictive modeling that not only meets regulatory obligations but also drives innovation, efficiency, and excellence in manufacturing operations.
+
+# Data Acquisition and Exploration:
+
+In this phase we will collect and integrate diverse data sets encompassing raw materials, process parameters, environmental conditions, and historical pH measurements to build a comprehensive understanding of the manufacturing process. In our case we were provided with a data set but obviously the data set provided was not ready to be fed to an algorithm to train a model. The data set provided was in .xlsx format and we stored on remote location i.e. Github repository, for reproducibility in a comma separated values (.csv) format. The below code chunk loads the provided data set into our environment where we can preprocess and make the data ready for the algorithms.
+
+## Loading the Data set:
 
 ```{r warning=FALSE, message=FALSE}
 df <- read_csv("https://raw.githubusercontent.com/Umerfarooq122/Using-Predictive-analytics-to-predict-PH-of-beverages/main/StudentData%20-%20Copy.csv")
 ```
 
+
+## Data Exploration:
+
+Let's check out the first few rows of the data set to confirm that all the features and observations are loaded correctly.
+
 ```{r}
-str(df)
+knitr::kable(head(df))
 ```
+
+We can see that everything loaded correctly let's check the structure of the data set to confirm that data types of the features.
+
+```{r, warning=FALSE, message=FALSE}
+glimpse(df)
+```
+
+We can see that most of the data did have the right format apart from the feature `Brand Code`. which needs to be fixed. Everything else looks good so far when it comes to data type but we can observe that some of the data has missing values when it comes to few variables or features like `MFR`,`Brand Code`, and `Filler Speed` e.t.c
+
+### Decrciptive summary:
+
+```{r}
+summary(df)
+```
+
+
+### Visual Analytics of features:
+
+Since we have a lot of numeric predictors so let's plot the histogram to see how they are distributed.
+
+```{r warning=FALSE}
+df %>%
+  keep(is.numeric) %>%
+  gather() %>%
+  ggplot(aes(value)) + 
+  geom_histogram(bins = 15) + 
+  facet_wrap(~key, scales = "free") +
+  ggtitle("Histograms of Numerical Predictors")
+```
+As we can see that predictors like `Carb Pressure`, `Carb Temp`, `Carb Volume`, `Pressure Vaccum`, `PC Volume`, are `Fill Ounces` are almost normally distributed and so does our target variable `PH`. Since our aim is to predict the `PH` which is a continuous number so we are dealing with a regression problem which in turn mean that we can apply linear regression. Application of linear regression should give us good results but we can see that most of the predictors that are not linearly distributed and it can be transformed to get good results but we might not spend that much time on each predictor if the linear regression model required a lot of improvement. At that point we might use other regression techniques like multivariate a regression splines (MARS), Support vector machines (SVM), Boosted Trees, Random Forest and Neural Networks e.t.c.
+
+Let's check out the `Brand Code` column now but we need to fix the data type before we plot the column.
 
 ```{r}
 df$`Brand Code` <- as.factor(df$`Brand Code`)
-#df_eval$Brand.Code <- as.factor(df_Eval$Brand.Code)
+df %>%
+  ggplot() + 
+  geom_bar(aes(x = `Brand Code`)) + 
+  ggtitle("Distribution of the Brand Codes")
 ```
+
+## Preprocessing Data set:
+
+In previous section we saw that we had
+
+### Checking missing values:
 
 ```{r}
 df %>%
@@ -54,24 +112,20 @@ df %>%
   arrange(-value) 
 ```
 
-```{r}
-colnames(df)
-```
+
+
+### Fixing Column names:
 
 ```{r}
-names<- c("Brand_Code", "Carb_Volume", "Fill_Ounces","PC_Volume", "Carb_Pressure",     "Carb_Temp",         "PSC" ,              "PSC_Fill" ,        
- "PSC_CO2"   ,        "Mnf_Flow"     ,     "Carb_Pressure1"   , "Fill_Pressure" ,   
- "Hyd_Pressure1"  ,   "Hyd_Pressure2" ,    "Hyd_Pressure3"  ,   "Hyd_Pressure4"  ,  
- "Filler_Level" ,     "Filler_Speed"  ,    "Temperature"  ,     "Usage_cont" ,      
- "Carb_Flow"  ,       "Density"   ,        "MFR"   ,            "Balling"   ,       
-"Pressure_Vacuum" ,  "PH" ,               "Oxygen_Filler"   ,  "Bowl_Setpoint"  ,  
- "Pressure_Setpoint", "Air_Pressurer" ,    "Alch_Rel"  ,        "Carb_Rel"   ,      
- "Balling_Lvl"      )
+names<- c("Brand_Code", "Carb_Volume", "Fill_Ounces","PC_Volume", "Carb_Pressure", "Carb_Temp","PSC" ,  "PSC_Fill", "PSC_CO2", "Mnf_Flow",  "Carb_Pressure1", "Fill_Pressure", "Hyd_Pressure1", "Hyd_Pressure2", "Hyd_Pressure3", "Hyd_Pressure4", "Filler_Level", "Filler_Speed" , "Temperature", "Usage_cont", "Carb_Flow", "Density", "MFR",  "Balling", "Pressure_Vacuum", "PH", "Oxygen_Filler", "Bowl_Setpoint",  
+ "Pressure_Setpoint", "Air_Pressurer", "Alch_Rel" , "Carb_Rel", "Balling_Lvl")
 ```
 
 ```{r}
 colnames(df) <- names
 ```
+
+### Imputing Missing values:
 
 ```{r}
 set.seed(100)
@@ -81,6 +135,15 @@ df <- mice(df, m = 1, method = 'pmm', print = FALSE) %>% complete()
 # filtering low frequencies
 df <- df[, -nearZeroVar(df)]
 ```
+
+We also excluded any near zero-variance predictors, in this case, only `Hyd_Pressure1` was removed
+
+
+
+
+# Model Development and Evaluation:
+
+## Splitting the Data:
 
 ```{r}
 index <- createDataPartition(df$PH, p = .75, list = FALSE)
@@ -95,11 +158,12 @@ test_y <- df[-index, 'PH']
 ```
 
 
+## {.tabset}
 
-
-## Robust Linear Regression
+### Robust Linear Regression
 
 ```{r}
+set.seed(123)
 ctrl <- trainControl(method = "cv", number = 10)
 rlmPCA <- train(train_x, train_y, method = "rlm", preProcess = c("center","scale"), trControl = ctrl)
 ```
@@ -144,7 +208,6 @@ gbmPred <- predict(gbmTune, test_x)
 
 postResample(gbmPred, test_y)
 ```
-
 
 ## **Random Forest:**
 
@@ -214,7 +277,6 @@ ctrl <- trainControl(method = "cv", number = 10)
 
 lmtuned <- train(PH~., data = training,  method = 'lm', trControl = ctrl)
 ```
-
 ```{r}
 lmtuned
 ```
@@ -229,7 +291,6 @@ plsTune <- train(PH~., data = training,
 ```{r}
 plsTune
 ```
-
 ## **Elastic Net Regression:**
 
 ```{r}
@@ -261,7 +322,6 @@ nnPred <- predict(nnetTune, X_test)
 ```{r}
 postResample(nnPred, as.matrix(y_test))
 ```
-
 ## **MARS:**
 
 ```{r}
@@ -298,7 +358,6 @@ gbmPred <- predict(gbmTune, X_test)
 
 postResample(gbmPred, as.matrix(y_test))
 ```
-
 ## **Cubist:**
 
 ```{r}
@@ -309,7 +368,6 @@ cubistPred <- predict(cubistTuned, X_test)
 
 postResample(cubistPred, as.matrix(y_test))
 ```
-
 ## **Random Forest:**
 
 
@@ -361,3 +419,8 @@ svmRPred <- predict(svmRTune, X_test)
 postResample(svmRPred, as.matrix(y_test))
 ```
 
+# Future Work:
+
+**Collaboration and Knowledge Sharing:** Foster collaboration with domain experts, process engineers, and regulatory compliance officers to leverage collective expertise in model development and validation. Promote knowledge sharing within the organization through workshops, presentations, and documentation.
+**Continuous Model Improvement:** Implement feedback loops to iteratively improve the predictive model based on performance monitoring, user feedback, and emerging data trends. Leverage techniques such as ensemble learning, model ensembling, or incorporating external data sources for enhanced predictive accuracy.
+**Regulatory Compliance and Reporting:** Ensure alignment of the predictive model with regulatory requirements by validating its performance against regulatory standards and guidelines. Generate comprehensive reports documenting model performance, validation results, and adherence to regulatory mandates.

@@ -15,6 +15,7 @@ library(caret)
 library(dplyr)
 library(mice)
 library(kernlab)
+library(corrplot)
 library(earth)
 library(nnet)
 library(neuralnet)
@@ -97,10 +98,11 @@ df %>%
   geom_bar(aes(x = `Brand Code`)) + 
   ggtitle("Distribution of the Brand Codes")
 ```
+we can see that we have four different brand codes i.e. A,B,C and D. A lot of observations are from brand code B. We can also see that we have a bunch of missing values in our brand codes. In the next section we will take care of the missing values in our Data set.
 
 ## Preprocessing Data set:
 
-In previous section we saw that we had
+In previous section we saw that we had a lot missing values in certain columns and in this section we will use different techniques to impute those missing values. Before imputation let's check out the number of missing values in each column.
 
 ### Checking missing values:
 
@@ -112,9 +114,12 @@ df %>%
   arrange(-value) 
 ```
 
+We can see that our `MFR` column has the highest number of missing values which almost equal to 8.24% of the total observations. In general it preferred by a lot of data scientist to remove columns that have missing more than 5% of the total observations. `Brand Code` also has missing values of around 4.6% of total observations. Now in order to impute these missing values we would use mice package from R but before that we have to fix the column names and remove the spacing in between the names since it is not compatible with mice package functions.
 
 
 ### Fixing Column names:
+
+In this section we will create a list to hold the column names and then use that list to replace all the column names in the data frame.
 
 ```{r}
 names<- c("Brand_Code", "Carb_Volume", "Fill_Ounces","PC_Volume", "Carb_Pressure", "Carb_Temp","PSC" ,  "PSC_Fill", "PSC_CO2", "Mnf_Flow",  "Carb_Pressure1", "Fill_Pressure", "Hyd_Pressure1", "Hyd_Pressure2", "Hyd_Pressure3", "Hyd_Pressure4", "Filler_Level", "Filler_Speed" , "Temperature", "Usage_cont", "Carb_Flow", "Density", "MFR",  "Balling", "Pressure_Vacuum", "PH", "Oxygen_Filler", "Bowl_Setpoint",  
@@ -125,28 +130,64 @@ names<- c("Brand_Code", "Carb_Volume", "Fill_Ounces","PC_Volume", "Carb_Pressure
 colnames(df) <- names
 ```
 
+Now we replace the column names and we can go ahead the check the first rows of the columns
+
+```{r}
+knitr::kable(head(df))
+```
+
+We can see that the column names have been updated.
+
 ### Imputing Missing values:
+
+Now that our data set is ready for the imputation we can go ahead and use mice package with Random Forest (RF). RF is particularly advantageous due to its capability to handle complex relationships, including non-linearities and interactions among variables. This robustness makes it suitable for data sets with mixed data types, as RF can seamlessly manage both continuous and categorical variables without requiring pre-processing. By employing an ensemble of decision trees, RF reduces bias compared to simpler imputation methods like mean or median imputation, yielding more accurate estimates for missing values. Moreover, RF provides insights into variable importance, aiding in variable selection and enhancing interpretability. Integrated with built-in cross-validation in the mice package, RF imputation optimizes model hyper-parameters, ensuring generalizability to unseen data. Overall, RF imputation in mice offers a versatile and effective approach to handling missing data, contributing to more robust statistical analyses and modeling.
+
 
 ```{r}
 set.seed(100)
 
-df <- mice(df, m = 1, method = 'pmm', print = FALSE) %>% complete()
+df <- mice(df, m = 1, method = 'rf', print = FALSE) %>% complete()
+```
 
+After taking care of the missing values we will then remove the columns that have low to almost zero variance since it might not help us in the predictions. Removing zero variance columns from a dataset before modeling serves several important purposes. First and foremost, these columns, which contain no variability as all values are the same, offer no discriminatory power to the model, essentially conveying no useful information for classification or prediction tasks. By eliminating them, the efficiency of the modeling process is enhanced, as computational resources are not wasted on training with non-informative features. Additionally, excluding zero variance columns helps avoid potential issues with certain algorithms that may encounter numerical instabilities or errors when confronted with such features. Furthermore, simplifying the model's interpretation becomes more feasible when irrelevant features are removed, allowing for a clearer understanding of the relationship between predictors and outcomes. This process also aids in reducing redundancy and multi-collinearity within the dataset, thereby improving the stability and performance of the model.
+
+```{r}
 # filtering low frequencies
 df <- df[, -nearZeroVar(df)]
 ```
 
-We also excluded any near zero-variance predictors, in this case, only `Hyd_Pressure1` was removed
+In this case, only `Hyd_Pressure1` was removed because of its low variance. Now that our data set is ready we can go ahead check the correlation among different columns and with our target column `PH`
+
+# Features Selection:
+
+## Correlation among features:
+
+Since it is a regression problem so we will need to check the colinearity among the variables and we might use Linear regression too and for linear regression co-linearity and multi-colinearity does affect the performance of the model a lot. We can drop some weak predictors or predictors that highly corelated with other predictors too.
 
 
+```{r}
+# Option 1: Removing non-numeric columns before calculating correlation
+numeric_df <- df %>%
+  select_if(is.numeric)
 
+# Calculate correlation matrix and plot
+correlation_matrix <- cor(numeric_df)
+corrplot(correlation_matrix, title = "Correlation between Variables")
+
+
+```
+
+We can see that `PH` does not have a strong positive correlation with a lot of features. It has a moderate correlation with features like `Filler_Level`, `Pressure_Vaccum`, `Oxygen_Filler` and `Bowl_Setpoint`. We can also observe multi-colinearity among `Density`,`Balling`, `Alch_Rel`,`Hyd_Pressure3` and `Baling_Lvl` e.t.c. Which can cause problems if we using a linear regression since multi-colinearity affects. We can counter that by carrying out principle component analysis (PCA). PCA will reduce the dimension and get rid of multi-colinearity but even then we would need other predictor to strongly correlate for linear regression. If we instead start to drop the column there is higher chance of getting a very low $R^2$ which means that the variance in the data might not get captured by the linear regression. So we will try not remove any columns and in combination with linear regression we will try other models like Trees and regulation rules, Support vector machines, and Neural networks e.t.c. These algorithms are not limited by multi-colinearity. We might not get a good performance from neural network either since it requires a lot of data points and for this particular study we only have 2571 observations which be further cut down into training and testing data sets.
 
 # Model Development and Evaluation:
+
+In this section we will develop our models. First we will split the data into 20-80. 20% for testing the algorithm's performance while 80% for training the algorithm. Once we are done with the split we can go ahead and train our models. For this study we will use linear regression, robust linear regression, multivariate adaptive regression splines, support vector machines, decision tree, random forests, Cubist, boosting and neural networks
 
 ## Splitting the Data:
 
 ```{r}
-index <- createDataPartition(df$PH, p = .75, list = FALSE)
+set.seed(123)
+index <- createDataPartition(df$PH, p = .8, list = FALSE)
 
 # train 
 train_x <- df[index, ] |> select(-PH)
@@ -160,43 +201,40 @@ test_y <- df[-index, 'PH']
 
 ## {.tabset}
 
+### Linear Regression
+
+```{r}
+ctrl <- trainControl(method = "cv", number = 10)
+suppressMessages({
+set.seed(123)
+lmtuned <- train(train_x,train_y,  method = 'lm', preProcess = c("center","scale"), trControl = ctrl)
+
+lmpred <- predict(lmtuned, test_x)
+})
+postResample(lmpred,test_y)
+```
+
 ### Robust Linear Regression
 
 ```{r}
 set.seed(123)
-ctrl <- trainControl(method = "cv", number = 10)
 rlmPCA <- train(train_x, train_y, method = "rlm", preProcess = c("center","scale"), trControl = ctrl)
-```
 
-
-```{r}
 rlmpred <- predict(rlmPCA, test_x)
-```
 
-```{r}
 postResample(rlmpred, test_y)
 ```
 
-## Linear Regression
+
+### **Boosted Trees:**
 
 ```{r}
-lmtuned <- train(train_x,train_y,  method = 'lm', preProcess = c("center","scale"), trControl = ctrl)
-```
-
-```{r}
-lmpred <- predict(lmtuned, test_x)
-postResample(lmpred,test_y)
-```
-
-
-## **Boosted Trees:**
-
-```{r}
+set.seed(123)
 gbmGrid <- expand.grid(interaction.depth = seq(1, 7, by = 2),
                        n.trees = seq(100, 1000, by = 50),
                        shrinkage = c(0.01, 0.1),
                        n.minobsinnode = 10)
-set.seed(100)
+
 
 gbmTune <- train(train_x,  train_y,
                  method = "gbm",
@@ -209,12 +247,12 @@ gbmPred <- predict(gbmTune, test_x)
 postResample(gbmPred, test_y)
 ```
 
-## **Random Forest:**
+### **Random Forest:**
 
 
 ```{r}
 set.seed(100)
-
+suppressMessages({
 rfGrid1 <- expand.grid(
   mtry = c(2, 4, 6,8,10,12,14,16,18,20)#,  
   #ntree = c(500, 1000),  
@@ -241,88 +279,12 @@ rfTune <- train(
 
 
 rfPred <- predict(rfTune, test_x)
-
+})
 postResample(rfPred, test_y)
 ```
 
 
-
-
-
-
-
-## **Loading the Data set:**
-
-
-
-```{r warning=FALSE, message=FALSE}
-X_train <- as.data.frame(read_csv("https://raw.githubusercontent.com/NickAMC/d624-project-2/main/X_train.csv"))
-y_train <- as.data.frame(read_csv("https://raw.githubusercontent.com/NickAMC/d624-project-2/main/y_train.csv"))
-X_test <- as.data.frame(read_csv("https://raw.githubusercontent.com/NickAMC/d624-project-2/main/X_test.csv"))
-y_test <- as.data.frame(read_csv("https://raw.githubusercontent.com/NickAMC/d624-project-2/main/y_test.csv"))
-```
-
-
-
-```{r}
-training <- cbind.data.frame(X_train, y_train)
-testing <- cbind.data.frame(X_test, y_test)
-```
-
-
-## Linear Regression
-
-```{r}
-ctrl <- trainControl(method = "cv", number = 10)
-
-lmtuned <- train(PH~., data = training,  method = 'lm', trControl = ctrl)
-```
-```{r}
-lmtuned
-```
-
-## Partial least Squares:
-
-```{r}
-plsTune <- train(PH~., data = training,
- method = "pls", tuneLength = 100, trControl = ctrl)#, preProc = c("center", "scale"))
-```
-
-```{r}
-plsTune
-```
-## **Elastic Net Regression:**
-
-```{r}
-enetGrid <- expand.grid(.lambda = c(0, 0.01, .1),.fraction = seq(.05, 1, length = 20))
-enetRegFit <- train(PH~., data = training, method = "enet", tuneGrid = enetGrid, trControl = ctrl,
-)
-```
-
-```{r}
-enetRegFit
-```
-
-## **Neural Network:**
-
-```{r}
-nnetGrid <- expand.grid(.decay = c(0, 0.01, .1),.size = c(1:10),.bag = FALSE)
-set.seed(100)
-nnetTune <- train(PH~., data = training ,method = "avNNet",tuneGrid = nnetGrid,trControl = ctrl,
-linout = TRUE,trace = FALSE, MaxNWts = 10 * (ncol(training) + 1) + 10 + 1, maxit = 20)
-```
-
-
-
-
-```{r}
-nnPred <- predict(nnetTune, X_test)
-```
-
-```{r}
-postResample(nnPred, as.matrix(y_test))
-```
-## **MARS:**
+### MARS:
 
 ```{r}
 marsGrid <- expand.grid(.degree = 1:2, .nprune = 2:38)
@@ -330,97 +292,121 @@ marsGrid <- expand.grid(.degree = 1:2, .nprune = 2:38)
 set.seed(100)
 
 # tune
-marsTune <- train(PH~.,data = training,
+marsTune <- train(train_x,train_y,
                   method = "earth",
                   tuneGrid = marsGrid,
+                  preProcess = c("center", "scale"),
                   trControl = trainControl(method = "cv"))
 
-marsPred <- predict(marsTune, X_test)
+marsPred <- predict(marsTune, test_x)
 
-postResample(marsPred, as.matrix(y_test))
+postResample(marsPred, test_y)
 ```
 
-## **Boosting:**
+### Cubist:
 
 ```{r}
-gbmGrid <- expand.grid(interaction.depth = seq(1, 7, by = 2),
-                       n.trees = seq(100, 1000, by = 50),
-                       shrinkage = c(0.01, 0.1),
-                       n.minobsinnode = 10)
-set.seed(100)
-
-gbmTune <- train(PH~., data = training,
-                 method = "gbm",
-                 tuneGrid = gbmGrid,
-                 verbose = FALSE)
-
-gbmPred <- predict(gbmTune, X_test)
-
-postResample(gbmPred, as.matrix(y_test))
-```
-## **Cubist:**
-
-```{r}
-cubistTuned <- train(PH~., data = training, 
+set.seed(123)
+cubistTuned <- train(train_x, train_y,
+                     preProcess = c("center", "scale"), 
                      method = "cubist")
 
-cubistPred <- predict(cubistTuned, X_test)
+cubistPred <- predict(cubistTuned, test_x)
 
-postResample(cubistPred, as.matrix(y_test))
-```
-## **Random Forest:**
-
-
-```{r}
-set.seed(100)
-
-rfGrid1 <- expand.grid(
-  mtry = c(2, 4, 6)#,  
-  #ntree = c(500, 1000),  
- # nodesize = c(1, 5)  
-)
-
-# Set up control parameters
-ctrl <- trainControl(
-  method = "cv", 
-  number = 5,  
-  verboseIter = TRUE  
-)
-
-# Train the random forest model
-set.seed(123)  
-rfTune <- train(
-  PH ~ .,  
-  data = training,  
-  method = "rf", 
-  tuneGrid = rfGrid1,  
-  trControl = ctrl  
-)
-
-
-rfPred <- predict(rfTune, X_test)
-
-postResample(rfPred, as.matrix(y_test))
+postResample(cubistPred, test_y)
 ```
 
-## **Support Vector Machines:**
+### Neural Network:
 
 ```{r}
-set.seed(100)
+suppressMessages({
+# remove predictors to ensure maximum abs pairwise corr between predictors < 0.75
+tooHigh <-findCorrelation(cor(train_x[, -1]), cutoff = .75)
+
+# removing 9 variables and the factored variable
+train_x_nnet <- train_x[, -tooHigh]
+test_x_nnet <- test_x[, -tooHigh]
+
+# create a tuning grid
+nnetGrid <- expand.grid(.decay = c(0, 0.01, .1),
+                        .size = c(1:10))
+
+
+set.seed(123)
 
 # tune
-svmRTune <- train(PH~., data = training,
-                  method = "svmRadial",
-                  tuneLength = 14,
-                  trControl = trainControl(method = "cv"))
+nnetTune <- train(train_x_nnet, train_y,
+                  method = "nnet",
+                  tuneGrid = nnetGrid,
+                  trControl = ctrl,
+                  preProc = c("center", "scale"),
+                  linout = TRUE,
+                  trace = FALSE,
+                  MaxNWts = 84851,
+                  maxit = 500)
 
-svmRPred <- predict(svmRTune, X_test)
-
-postResample(svmRPred, as.matrix(y_test))
+nnPred <- predict(nnetTune, test_x_nnet)
+})
+postResample(nnPred, test_y)
 ```
 
-# Future Work:
 
-**Collaboration and Knowledge Sharing:** Foster collaboration with domain experts, process engineers, and regulatory compliance officers to leverage collective expertise in model development and validation. Promote knowledge sharing within the organization through workshops, presentations, and documentation.
-**Continuous Model Improvement:** Implement feedback loops to iteratively improve the predictive model based on performance monitoring, user feedback, and emerging data trends. Leverage techniques such as ensemble learning, model ensembling, or incorporating external data sources for enhanced predictive accuracy.
-**Regulatory Compliance and Reporting:** Ensure alignment of the predictive model with regulatory requirements by validating its performance against regulatory standards and guidelines. Generate comprehensive reports documenting model performance, validation results, and adherence to regulatory mandates.
+### Support Vector Machine:
+
+```{r}
+
+
+set.seed(123)
+
+# tune
+svmRTune <- train(train_x[, -1], train_y,
+                  method = "svmRadial",
+                  tuneLength = 14,
+                  preProcess = c("center", "scale"),
+                  trControl = trainControl(method = "cv"))
+
+svmRPred <- predict(svmRTune, test_x[, -1])
+
+postResample(svmRPred, test_y)
+```
+
+
+# Evaluation:
+
+
+In regression analysis, evaluating the performance of models is crucial for understanding how well they capture the relationship between predictor variables and the target variable. Commonly used metrics such as Mean Squared Error (MSE), Root Mean Squared Error (RMSE), and Mean Absolute Error (MAE) provide insights into the accuracy of predictions, while R-squared (R²) measures the proportion of variance explained by the model. Residual analysis and cross-validation techniques further aid in assessing model assumptions and generalization to new data. By considering these evaluation metrics and techniques, analysts can make informed decisions about model selection, refinement, and interpretation, ultimately ensuring the reliability and validity of regression models in capturing underlying patterns in the data.
+
+```{r}
+rbind(lm = postResample(lmpred, test_y),
+      rlm = postResample(rlmpred, test_y),
+      nn = postResample(nnPred, test_y),
+      mars = postResample(marsPred, test_y),
+      svmR = postResample(svmRPred, test_y),
+      randomForest = postResample(rfPred, test_y),
+      boosted = postResample(gbmPred, test_y),
+      cubist = postResample(cubistPred, test_y))
+```
+
+
+**Linear Model (lm):** The linear model shows moderate performance, with a RMSE of 0.1326 and an Rsquared of 0.4241. While it provides a simple and interpretable model, it may struggle to capture complex relationships in the data.
+
+**Robust Linear Model (rlm):** The robust linear model exhibits similar performance to the linear model but with slightly lower RMSE (0.1324) and slightly higher Rsquared (0.4281). It offers improved robustness against outliers compared to the standard linear model.
+
+**Neural Network (nn):** The neural network model demonstrates better predictive performance than linear models, with a lower RMSE of 0.1300 and a higher Rsquared of 0.4514. Neural networks can capture nonlinear relationships in the data, making them suitable for complex datasets.
+
+**Multivariate Adaptive Regression Splines (mars):** MARS outperforms lm, rlm and nn with a lower RMSE of 0.1260 and the highest Rsquared of 0.4797. MARS is capable of capturing nonlinear and interaction effects in the data, making it a powerful tool for predictive modeling.
+
+**Support Vector Machine Regression (svmR):** SVM regression shows competitive performance with a lower RMSE of 0.1197 and a relatively high Rsquared of 0.5323. SVMs excel in capturing complex patterns in high-dimensional spaces, offering robustness and generalization capabilities.
+
+**Random Forest:** Random forest emerges as the top-performing model with the lowest RMSE of 0.0949 and the highest Rsquared of 0.7203. Random forests leverage ensemble learning to combine multiple decision trees, providing excellent predictive accuracy and resilience to overfitting.
+
+**Boosted Regression Trees (boosted):** Boosted regression trees offer good predictive performance with a lower RMSE than linear models but slightly lower R-squared compared to random forest. Boosted models iteratively improve predictive accuracy by combining weak learners, making them effective for complex datasets.
+
+**Cubist:** Cubist regression demonstrates performance similar to boosted regression trees, with a slightly lower RMSE and slightly higher R-squared. Cubist models use a combination of regression trees and linear models to capture complex relationships in the data.
+
+In summary, while linear models offer simplicity and interpretability, more complex models like neural networks, MARS, SVM, random forest, boosted regression trees, and cubist provide superior predictive performance, especially for datasets with nonlinear relationships and interactions. The choice of the best model depends on factors such as the nature of the data, computational resources, interpretability requirements, and the desired balance between bias and variance. In our case, overall, random forest appears to be the best-performing model based on RMSE and R-squared metrics
+
+
+# Predictions:
+
+# Future Works:

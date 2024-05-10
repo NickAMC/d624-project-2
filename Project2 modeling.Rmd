@@ -1,0 +1,719 @@
+---
+title: "Predictive modeling"
+date: "`r Sys.Date()`"
+output:
+  rmdformats::readthedown:
+    highlight: kate
+---
+
+```{r setup, include=FALSE}
+## Global options
+knitr::opts_chunk$set(cache = TRUE)
+```
+
+```{r warning=FALSE, message=FALSE}
+library(glmnet)
+library(tidyverse)
+library(caret)
+library(dplyr)
+library(mice)
+library(kernlab)
+library(earth)
+library(nnet)
+library(neuralnet)
+library(Cubist)
+library(gbm)
+library(ipred)
+library(party)
+library(partykit)
+library(randomForest)
+library(rpart)
+library(kableExtra)
+#library(RWeka)
+```
+
+## Preprocessing:
+
+```{r warning=FALSE, message=FALSE}
+df <- read_csv("https://raw.githubusercontent.com/Umerfarooq122/Using-Predictive-analytics-to-predict-PH-of-beverages/main/StudentData%20-%20Copy.csv")
+```
+
+```{r}
+str(df)
+```
+
+```{r}
+df$`Brand Code` <- as.factor(df$`Brand Code`)
+#df_eval$Brand.Code <- as.factor(df_Eval$Brand.Code)
+```
+
+
+```{r}
+df %>%
+  keep(is.numeric) %>%
+  gather() %>%
+  ggplot(aes(value)) + 
+  geom_histogram(bins = 15) + 
+  facet_wrap(~key, scales = "free") +
+  ggtitle("Histograms of Numerical Predictors")
+```
+
+
+
+```{r}
+plot_missing(df)
+```
+
+
+
+
+
+
+```{r}
+df %>%
+  summarise_all(list(~ sum(is.na(.)))) %>%
+  gather(variable, value) %>%
+  filter(value != 0) %>%
+  arrange(-value) 
+```
+
+```{r}
+colnames(df)
+```
+
+```{r}
+names<- c("Brand_Code", "Carb_Volume", "Fill_Ounces","PC_Volume", "Carb_Pressure",     "Carb_Temp",         "PSC" ,              "PSC_Fill" ,        
+ "PSC_CO2"   ,        "Mnf_Flow"     ,     "Carb_Pressure1"   , "Fill_Pressure" ,   
+ "Hyd_Pressure1"  ,   "Hyd_Pressure2" ,    "Hyd_Pressure3"  ,   "Hyd_Pressure4"  ,  
+ "Filler_Level" ,     "Filler_Speed"  ,    "Temperature"  ,     "Usage_cont" ,      
+ "Carb_Flow"  ,       "Density"   ,        "MFR"   ,            "Balling"   ,       
+"Pressure_Vacuum" ,  "PH" ,               "Oxygen_Filler"   ,  "Bowl_Setpoint"  ,  
+ "Pressure_Setpoint", "Air_Pressurer" ,    "Alch_Rel"  ,        "Carb_Rel"   ,      
+ "Balling_Lvl"      )
+```
+
+```{r}
+colnames(df) <- names
+```
+
+```{r}
+set.seed(100)
+
+df <- mice(df, m = 1, method = 'pmm', print = FALSE) %>% complete()
+
+# filtering low frequencies
+df <- df[, -nearZeroVar(df)]
+```
+
+```{r}
+index <- createDataPartition(df$PH, p = .75, list = FALSE)
+
+# train 
+train_x <- df[index, ] |> select(-PH)
+train_y <- df[index, 'PH']
+
+# test
+test_x <- df[-index, ] |> select(-PH)
+test_y <- df[-index, 'PH']
+```
+
+
+
+
+## **Robust Linear Regression:**
+
+```{r}
+ctrl <- trainControl(method = "cv", number = 10)
+rlmPCA <- train(train_x, train_y, method = "rlm", preProcess = c("center","scale"), trControl = ctrl)
+```
+
+
+```{r}
+rlmpred <- predict(rlmPCA, test_x)
+```
+
+```{r}
+RLR_Model <- postResample(rlmpred, test_y)
+RLR_Model
+```
+
+## **Linear Regression:**
+
+```{r}
+lmtuned <- train(train_x,train_y,  method = 'lm', preProcess = c("center","scale"), trControl = ctrl)
+```
+
+```{r}
+lmpred <- predict(lmtuned, test_x)
+LR_Model <- postResample(lmpred,test_y)
+LR_Model
+```
+
+
+## **Boosted Trees:**
+
+```{r}
+gbmGrid <- expand.grid(interaction.depth = seq(1, 7, by = 2),
+                       n.trees = seq(100, 1000, by = 50),
+                       shrinkage = c(0.01, 0.1),
+                       n.minobsinnode = 10)
+set.seed(100)
+
+gbmTune <- train(train_x,  train_y,
+                 method = "gbm",
+                 tuneGrid = gbmGrid,
+                 preProcess = c("center", "scale"),
+                 verbose = FALSE)
+
+gbmPred <- predict(gbmTune, test_x)
+
+GBM_Model <- postResample(gbmPred, test_y)
+GBM_Model
+```
+
+
+## **Random Forest:**
+
+
+```{r}
+set.seed(100)
+
+rfGrid1 <- expand.grid(
+  mtry = c(2, 4, 6,8,10,12,14,16,18,20) #,  
+  #ntree = c(500, 1000),  
+ # nodesize = c(1, 5)  
+)
+
+# Set up control parameters
+ctrl <- trainControl(
+  method = "cv", 
+  number = 5,  
+  verboseIter = TRUE  
+)
+
+# Train the random forest model
+set.seed(123)  
+rfTune <- train(
+  train_x,  
+  train_y,  
+  method = "rf", 
+  preProcess = c("center", "scale"),
+  tuneGrid = rfGrid1,  
+  trControl = ctrl  
+)
+
+
+rfPred <- predict(rfTune, test_x)
+
+RF_Model <- postResample(rfPred, test_y)
+RF_Model
+```
+
+
+## **Cubist:**
+
+```{r}
+set.seed(100)
+cubistTuned <- train(train_x, train_y, 
+                     method = "cubist")
+
+cubistPred <- predict(cubistTuned, test_x)
+
+Cubist_Model <- postResample(cubistPred, test_y)
+Cubist_Model
+```
+
+
+
+
+
+## **SVM:**
+
+```{r}
+set.seed(100)
+
+# tune
+svmRTune <- train(train_x[, -1], train_y,
+                  method = "svmRadial",
+                  preProc = c("center", "scale"),
+                  tuneLength = 14,
+                  trControl = trainControl(method = "cv"))
+
+svmRPred <- predict(svmRTune, test_x[, -1])
+
+SVM_Model <- postResample(svmRPred, test_y)
+SVM_Model
+```
+
+
+
+## **MARS:**
+
+
+```{r}
+set.seed(100)
+marsGrid <- expand.grid(.degree = 1:2, .nprune = 2:15)
+marsModel <- train(train_x, train_y,
+                  method = "earth",
+                  tuneGrid = marsGrid,
+                  preProcess = c("center", "scale"),
+                  tuneLength = 10,
+                  trControl = trainControl(method = "repeatedcv",
+                                            repeats = 5))
+marsModel
+
+
+
+
+
+# create a tuning grid
+# marsGrid <- expand.grid(.degree = 1:2, .nprune = 2:38)
+# 
+# set.seed(100)
+# 
+# # tune
+# marsTune <- train(train_x, train_y,
+#                   method = "earth",
+#                   tuneGrid = marsGrid,
+#                   trControl = trainControl(method = "cv"))
+
+```
+
+
+
+```{r}
+marsPred <- predict(marsModel, newdata = test_x)
+MARS_Model <- postResample(pred = marsPred, obs = test_y)
+MARS_Model
+
+# marsPred <- predict(marsTune, test_x)
+# 
+# postResample(marsPred, test_y)
+```
+
+
+
+## **K-Nearest Neighbors:**
+
+
+```{r warning=FALSE, message=FALSE}
+set.seed(123)
+ctrl <- trainControl(
+  method = "repeatedcv", 
+  repeats = 3
+)
+
+set.seed(123)
+knnModel <- train(
+  train_x, train_y,
+  method = "knn",
+  preProc = c("center", "scale"),
+  tuneLength = 20,
+  trControl = ctrl
+)
+
+knnModel
+```
+
+
+```{r}
+set.seed(123)
+knn_pred <- predict(knnModel, newdata = test_x)
+KNN_Model <- postResample(pred = knn_pred, obs = test_y)
+KNN_Model
+```
+
+
+
+
+
+
+
+```{r}
+
+models_summary <- rbind(KNN_Model, 
+                         SVM_Model, 
+                         MARS_Model,
+                         Cubist_Model,
+                         RLR_Model, 
+                         LR_Model,
+                         GBM_Model,
+                         RF_Model)
+
+
+
+
+
+# rbind(#lm = postResample(lmPred, test_y),
+#       #pls = postResample(plsPred, test_y),
+#       MARS_)
+
+
+
+# rbind(#lm = postResample(lmPred, test_y),
+#       #pls = postResample(plsPred, test_y),
+#       NN_Model = NN_results,
+#       MARS_model = MARS_results,
+#       SVM_Model = SVM_results,
+#       RF_Model = RF_results,
+#       Boosted_Model = GBM_results,
+#       Cubist_Model = Cubist_results)
+```
+
+
+```{r}
+kbl(models_summary) |>
+  kable_styling()
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+## **Loading the Data set:**
+
+
+
+```{r warning=FALSE, message=FALSE}
+X_train <- as.data.frame(read_csv("https://raw.githubusercontent.com/NickAMC/d624-project-2/main/X_train.csv"))
+y_train <- as.data.frame(read_csv("https://raw.githubusercontent.com/NickAMC/d624-project-2/main/y_train.csv"))
+X_test <- as.data.frame(read_csv("https://raw.githubusercontent.com/NickAMC/d624-project-2/main/X_test.csv"))
+y_test <- as.data.frame(read_csv("https://raw.githubusercontent.com/NickAMC/d624-project-2/main/y_test.csv"))
+```
+
+
+
+
+
+
+
+
+
+
+```{r}
+training <- cbind.data.frame(X_train, y_train)
+testing <- cbind.data.frame(X_test, y_test)
+```
+
+
+
+```{r}
+plot_histogram(training)
+```
+
+
+
+```{r}
+plot_density(training)
+```
+
+
+
+```{r}
+plot_boxplot(training, by="PH")
+```
+
+
+
+
+## Linear Regression
+
+```{r warning=FALSE, message=FALSE}
+set.seed(100)
+ctrl <- trainControl(method = "cv", number = 10)
+
+lmtuned <- train(PH~., data = training,  method = 'lm', trControl = ctrl)
+```
+
+
+
+
+
+```{r}
+lmtuned
+```
+
+
+```{r warning=FALSE, message=FALSE}
+set.seed(100)
+
+
+lmPred <- predict(lmtuned, X_test)
+
+
+```
+
+
+
+
+```{r}
+LR_results <- postResample(lmPred, y_test)
+```
+
+
+
+
+## Partial Least Squares:
+
+```{r}
+plsTune <- train(PH~., data = training,
+method = "pls", tuneLength = 100, trControl = ctrl)#, preProc = c("center", "scale"))
+```
+
+```{r}
+plsTune
+```
+
+
+```{r}
+plsPred <- predict(plsTune, X_test)
+
+PLS_results <- postResample(plsPred, y_test)
+PLS_results
+```
+
+
+
+## **Elastic Net Regression:**
+
+```{r}
+enetGrid <- expand.grid(.lambda = c(0, 0.01, .1),.fraction = seq(.05, 1, length = 20))
+enetRegFit <- train(PH~., data = training, method = "enet", tuneGrid = enetGrid, trControl = ctrl,
+)
+```
+
+```{r}
+enetRegFit
+```
+
+```{r}
+enetPred <- predict(enetRegFit, X_test)
+
+ENET_results <- postResample(enetPred, y_test)
+ENET_results
+```
+
+
+
+
+## **Neural Network:**
+
+```{r}
+nnetGrid <- expand.grid(.decay = c(0, 0.01, .1),.size = c(1:10),.bag = FALSE)
+set.seed(100)
+nnetTune <- train(PH~., data = training ,method = "avNNet",tuneGrid = nnetGrid,trControl = ctrl,
+linout = TRUE,trace = FALSE, MaxNWts = 10 * (ncol(training) + 1) + 10 + 1, maxit = 20)
+```
+
+
+
+
+```{r}
+nnPred <- predict(nnetTune, X_test)
+```
+
+```{r}
+NN_results <- postResample(nnPred, as.matrix(y_test))
+NN_results
+```
+
+## **MARS:**
+
+```{r}
+marsGrid <- expand.grid(.degree = 1:2, .nprune = 2:38)
+
+set.seed(100)
+
+# tune
+marsTune <- train(PH~.,data = training,
+                  method = "earth",
+                  tuneGrid = marsGrid,
+                  trControl = trainControl(method = "cv"))
+
+marsPred <- predict(marsTune, X_test)
+
+MARS_results <- postResample(marsPred, as.matrix(y_test))
+MARS_results
+```
+
+## **Boosting:**
+
+```{r}
+gbmGrid <- expand.grid(interaction.depth = seq(1, 7, by = 2),
+                       n.trees = seq(100, 1000, by = 50),
+                       shrinkage = c(0.01, 0.1),
+                       n.minobsinnode = 10)
+set.seed(100)
+
+gbmTune <- train(PH~., data = training,
+                 method = "gbm",
+                 tuneGrid = gbmGrid,
+                 verbose = FALSE)
+
+gbmPred <- predict(gbmTune, X_test)
+
+GBM_results <- postResample(gbmPred, as.matrix(y_test))
+GBM_results
+```
+
+## **Cubist:**
+
+```{r}
+cubistTuned <- train(PH~., data = training, 
+                     method = "cubist")
+
+cubistPred <- predict(cubistTuned, X_test)
+
+Cubist_results <- postResample(cubistPred, as.matrix(y_test))
+Cubist_results
+```
+
+## **Random Forest:**
+
+
+```{r}
+set.seed(100)
+
+rfGrid1 <- expand.grid(
+  mtry = c(2, 4, 6)#,  
+  #ntree = c(500, 1000),  
+ # nodesize = c(1, 5)  
+)
+
+# Set up control parameters
+ctrl <- trainControl(
+  method = "cv", 
+  number = 5,  
+  verboseIter = TRUE  
+)
+
+# Train the random forest model
+set.seed(123)  
+rfTune <- train(
+  PH ~ .,  
+  data = training,  
+  method = "rf", 
+  tuneGrid = rfGrid1,  
+  trControl = ctrl  
+)
+
+
+rfPred <- predict(rfTune, X_test)
+
+RF_results <- postResample(rfPred, as.matrix(y_test))
+RF_results
+```
+
+## **Support Vector Machines:**
+
+```{r}
+set.seed(100)
+
+# tune
+svmRTune <- train(PH~., data = training,
+                  method = "svmRadial",
+                  tuneLength = 14,
+                  trControl = trainControl(method = "cv"))
+
+svmRPred <- predict(svmRTune, X_test)
+
+SVM_results <- postResample(svmRPred, as.matrix(y_test))
+SVM_results
+```
+
+
+
+
+## **K-Nearest Neighbors:**
+
+```{r warning=FALSE, message=FALSE}
+set.seed(123)
+ctrl <- trainControl(
+  method = "repeatedcv", 
+  repeats = 3
+)
+
+set.seed(123)
+knnModel <- train(
+  X_train, y_train,
+  method = "knn",
+  preProc = c("center", "scale"),
+  tuneLength = 20,
+  trControl = ctrl
+)
+
+knnModel
+```
+
+
+```{r}
+set.seed(123)
+knn_pred <- predict(knnModel, newdata = X_test)
+KNN_results <- postResample(pred = knn_pred, obs = y_test)
+KNN_results
+```
+
+
+
+
+
+
+
+```{r}
+
+models_summary <- rbind(KNN_results, 
+                         SVM_results, 
+                         MARS_results,
+                         Cubist_results,
+                         LR_results,
+                         GBM_results,
+                         RF_results,
+                        NN_results, 
+                        ENET_results,
+                        PLS_results)
+
+
+
+
+# rbind(#lm = postResample(lmPred, test_y),
+#       #pls = postResample(plsPred, test_y),
+#       NN_Model = NN_results,
+#       MARS_model = MARS_results,
+#       SVM_Model = SVM_results,
+#       RF_Model = RF_results,
+#       Boosted_Model = GBM_results,
+#       Cubist_Model = Cubist_results)
+```
+
+
+```{r}
+kbl(models_summary) |>
+  kable_styling()
+```
+
+
+
+```{r}
+write.xlsx(atm_may_fc, file = "/Users/mohamedhassan/Downloads/StudentEvaluation (1).xlsx",
+      sheetName = "pH ", append = FALSE)
+```
+
+
+
+

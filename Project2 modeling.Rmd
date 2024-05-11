@@ -297,22 +297,22 @@ MARS_Model
 
 
 ```{r warning=FALSE, message=FALSE}
-set.seed(123)
-ctrl <- trainControl(
-  method = "repeatedcv", 
-  repeats = 3
-)
-
-set.seed(123)
-knnModel <- train(
-  train_x, train_y,
-  method = "knn",
-  preProc = c("center", "scale"),
-  tuneLength = 20,
-  trControl = ctrl
-)
-
-knnModel
+# set.seed(123)
+# ctrl <- trainControl(
+#   method = "repeatedcv", 
+#   repeats = 3
+# )
+# 
+# set.seed(123)
+# knnModel <- train(
+#   train_x, train_y,
+#   method = "knn",
+#   preProc = c("center", "scale"),
+#   tuneLength = 20,
+#   trControl = ctrl
+# )
+# 
+# knnModel
 ```
 
 
@@ -331,7 +331,7 @@ KNN_Model
 
 ```{r}
 
-models_summary <- rbind(KNN_Model, 
+models_summary <- rbind(#KNN_Model, 
                          SVM_Model, 
                          MARS_Model,
                          Cubist_Model,
@@ -370,13 +370,32 @@ kbl(models_summary) |>
 
 
 
+```{r}
+set.seed(123)
+rf_model_importance <- varImp(rfTune)$importance |>
+  as.data.frame() |>
+  rownames_to_column("Variable") |>
+  top_n(10) |>
+  arrange(desc(Overall)) |>
+  mutate(importance = row_number())
+
+set.seed(123)
+varImp(rfTune) %>%
+  plot(., top = max(rf_model_importance$importance), main = "Top Ten Informative Predictors of Random Forest Model")
+```
+
+
+```{r}
+RF_Model
+```
 
 
 
 
-
-
-
+```{r}
+write.xlsx(atm_may_fc, file = "/Users/mohamedhassan/Downloads/StudentEvaluation (1).xlsx",
+      sheetName = "pH ", append = FALSE)
+```
 
 
 
@@ -460,11 +479,19 @@ lmPred <- predict(lmtuned, X_test)
 ```
 
 
+```{r}
+lmPred <- as.data.frame(lmPred)
+```
+
+
 
 
 ```{r}
+set.seed(100)
 LR_results <- postResample(lmPred, y_test)
+LR_results
 ```
+
 
 
 
@@ -477,12 +504,21 @@ method = "pls", tuneLength = 100, trControl = ctrl)#, preProc = c("center", "sca
 ```
 
 ```{r}
-plsTune
+plsTune 
 ```
 
 
 ```{r}
+plsTune
+```
+
+
+
+```{r}
+set.seed(100)
 plsPred <- predict(plsTune, X_test)
+
+plsPred <- as.data.frame(plsPred)
 
 PLS_results <- postResample(plsPred, y_test)
 PLS_results
@@ -503,7 +539,11 @@ enetRegFit
 ```
 
 ```{r}
+set.seed(100)
 enetPred <- predict(enetRegFit, X_test)
+
+
+enetPred <- as.data.frame(enetPred)
 
 ENET_results <- postResample(enetPred, y_test)
 ENET_results

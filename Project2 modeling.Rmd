@@ -1,7 +1,7 @@
 ---
 title: "Predicting the PH Of Beverages"
 date: "`r Sys.Date()`"
-author: "Moiya Joseph, Muhammad Hasan, Muhammad Rahman, Nick Climaco and Umer Farooq"
+author: "Moiya Josephs, Mohamed Hassan-El Serafi, Mohammed Rahman, Nick Climaco and Umer Farooq"
 output:
   rmdformats::readthedown:
     highlight: kate

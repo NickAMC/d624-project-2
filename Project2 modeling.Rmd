@@ -21,6 +21,7 @@ library(earth)
 library(nnet)
 library(neuralnet)
 library(Cubist)
+library(kableExtra)
 library(gbm)
 library(ipred)
 library(openxlsx)
@@ -380,14 +381,17 @@ postResample(svmRPred, test_y)
 In regression analysis, evaluating the performance of models is crucial for understanding how well they capture the relationship between predictor variables and the target variable. Commonly used metrics such as Mean Squared Error (MSE), Root Mean Squared Error (RMSE), and Mean Absolute Error (MAE) provide insights into the accuracy of predictions, while R-squared (R²) measures the proportion of variance explained by the model. Residual analysis and cross-validation techniques further aid in assessing model assumptions and generalization to new data. By considering these evaluation metrics and techniques, analysts can make informed decisions about model selection, refinement, and interpretation, ultimately ensuring the reliability and validity of regression models in capturing underlying patterns in the data.
 
 ```{r}
-rbind(lm = postResample(lmpred, test_y),
-      rlm = postResample(rlmpred, test_y),
-      nn = postResample(nnPred, test_y),
-      mars = postResample(marsPred, test_y),
-      svmR = postResample(svmRPred, test_y),
-      randomForest = postResample(rfPred, test_y),
-      boosted = postResample(gbmPred, test_y),
-      cubist = postResample(cubistPred, test_y))
+models_summary = rbind(LinearRegression = postResample(lmpred, test_y),
+      RobustLinearRegression = postResample(rlmpred, test_y),
+      NeuralNetworks = postResample(nnPred, test_y),
+      MARS = postResample(marsPred, test_y),
+      SupportVectorMachineRegression = postResample(svmRPred, test_y),
+      RandomForest = postResample(rfPred, test_y),
+      BoostedTress = postResample(gbmPred, test_y),
+      Cubist = postResample(cubistPred, test_y))
+
+kbl(models_summary) |>
+  kable_styling()
 ```
 
 
